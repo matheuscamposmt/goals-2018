@@ -189,7 +189,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 }
 
 func randomElectionTimeout() time.Duration {
-	return time.Duration(150+rand.Intn(150)) * time.Millisecond
+	return time.Duration(150+rand.Intn(200)) * time.Millisecond
 }
 
 func (rf *Raft) run() {
