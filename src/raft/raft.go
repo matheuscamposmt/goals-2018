@@ -114,7 +114,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
-		logger.Printf("Server %d rejected vote request from candidate %d: term %d < currentTerm %d", rf.me, args.CandidateId, args.Term, rf.currentTerm)
 		return
 	}
 
@@ -127,7 +126,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	updated := isUpToDate(rf.getLastLogIndex(), rf.getLastLogTerm(), args.LastLogIndex, args.LastLogTerm)
 	if updated && (rf.votedFor == -1 || rf.votedFor == args.CandidateId) {
-		logger.Printf("Server %d voted for candidate %d in term %d", rf.me, args.CandidateId, args.Term)
 		rf.vote <- true
 		rf.state = Follower
 		reply.VoteGranted = true
@@ -163,7 +161,6 @@ func (rf *Raft) Kill() {
 	defer rf.mu.Unlock()
 	rf.dead = 1
 
-	logger.Printf("Server %d killed", rf.me)
 }
 
 func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
@@ -187,8 +184,6 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	rf.readPersist(persister.ReadRaftState())
 
 	go rf.run()
-
-	logger.Printf("Server %d initialized", rf.me)
 
 	return rf
 }
@@ -217,7 +212,6 @@ func (rf *Raft) runFollower() {
 	case <-rf.vote:
 	case <-time.After(randomElectionTimeout()):
 		rf.state = Candidate
-		logger.Printf("Election Timeout: Server %d became Candidate in term %d", rf.me, rf.currentTerm)
 
 	}
 }
@@ -248,7 +242,6 @@ func (rf *Raft) startElection() {
 	rf.votes_received = 1
 	rf.persist()
 
-	logger.Printf("Server %d starting election in term %d", rf.me, rf.currentTerm)
 	args := RequestVoteArgs{
 		Term:         rf.currentTerm,
 		CandidateId:  rf.me,
@@ -273,9 +266,7 @@ func (rf *Raft) startElection() {
 
 					if reply.VoteGranted {
 						rf.votes_received++
-						logger.Printf("Server %d received %d votes in term %d", rf.me, rf.votes_received, rf.currentTerm)
 						if rf.state == Candidate && rf.votes_received > (len(rf.peers)/2) {
-							logger.Printf("Server %d became Leader in term %d with %d votes", rf.me, rf.currentTerm, rf.votes_received)
 							rf.state = Leader
 							rf.elected <- true
 						}
@@ -301,12 +292,12 @@ func (rf *Raft) sendHeartbeats() {
 
 // AppendEntriesArgs represents the arguments for an AppendEntries RPC.
 type AppendEntriesArgs struct {
-	Term         int        // leader’s term
-	LeaderId     int        // so follower can redirect clients
-	PrevLogIndex int        // index of log entry immediately preceding new ones
-	PrevLogTerm  int        // term of prevLogIndex entry
-	Entries      []LogEntry // log entries to store (empty for heartbeat; may send more than one for efficiency)
-	LeaderCommit int        // leader’s commitIndex
+	Term         int
+	LeaderId     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []LogEntry
+	LeaderCommit int
 }
 
 // AppendEntriesReply represents the reply for an AppendEntries RPC.
@@ -330,10 +321,9 @@ func (rf *Raft) sendHeartbeat(server int) {
 
 	go func() {
 		var reply AppendEntriesReply
-		ok := rf.sendAppendEntries(server, &args, &reply)
+		ok := rf.sendEntries(server, &args, &reply)
 		if ok {
 			rf.handleAppendEntriesReply(server, &args, &reply)
-			//logger.Printf("Server %d sending heartbeats in term %d", rf.me, rf.currentTerm)
 		}
 	}()
 
@@ -347,7 +337,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
-		logger.Printf("Server %d rejected AppendEntries from leader %d: term %d < currentTerm %d", rf.me, args.LeaderId, args.Term, rf.currentTerm)
 		return
 	}
 
@@ -357,7 +346,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
 		rf.state = Follower
-		logger.Printf("Server %d updated term to %d and became Follower", rf.me, rf.currentTerm)
 	}
 
 	reply.Term = args.Term
@@ -365,7 +353,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// log consistency check
 	if len(rf.log) > 0 && (args.PrevLogIndex >= len(rf.log) || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm) {
 		reply.Success = false
-		logger.Printf("Server %d rejected AppendEntries from leader %d: log inconsistency", rf.me, args.LeaderId)
 		return
 	}
 
@@ -375,7 +362,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Success = true
 }
 
-func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+func (rf *Raft) sendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	return rf.peers[server].Call("Raft.AppendEntries", args, reply)
 }
 
@@ -388,7 +375,6 @@ func (rf *Raft) handleAppendEntriesReply(server int, args *AppendEntriesArgs, re
 	}
 
 	if reply.Term > rf.currentTerm {
-		logger.Printf("Server %d became Follower in term %d", rf.me, reply.Term)
 		rf.currentTerm = reply.Term
 		rf.state = Follower
 		rf.votedFor = -1
